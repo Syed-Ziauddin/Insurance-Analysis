@@ -1,0 +1,215 @@
+
+-- ============================================================
+-- KPI 1: NO. OF INVOICES BY ACCOUNT EXECUTIVE
+-- ============================================================
+
+SELECT
+    `Account Executive`,
+    COUNT(DISTINCT invoice_number) AS `No of Invoices`
+FROM invoice
+GROUP BY `Account Executive`
+ORDER BY `No of Invoices` DESC;
+
+
+-- ============================================================
+-- KPI 2: YEARLY MEETING COUNT
+-- ============================================================
+
+SELECT
+    YEAR(STR_TO_DATE(meeting_date, '%d-%m-%Y')) AS `Year`,
+    COUNT(*) AS `Meeting Count`
+FROM meeting
+GROUP BY YEAR(STR_TO_DATE(meeting_date, '%d-%m-%Y'))
+ORDER BY `Year`;
+
+-- ============================================================
+-- KPI 3: CROSS SELL / NEW / RENEWAL
+-- TARGET, ACHIEVE, NEW
+-- ============================================================
+
+WITH revenue_data AS
+(
+    -- Brokerage data
+    SELECT
+        CASE
+            WHEN `Account Exe ID` = 'Vididt Saha'
+                THEN 'Vidit Shah'
+            ELSE `Account Exe ID`
+        END AS `Account Executive`,
+        income_class,
+        CAST(Amount AS DECIMAL(18,2)) AS Amount
+    FROM brokerage
+
+    UNION ALL
+
+    -- Fees data
+    SELECT
+        `Account Executive`,
+        income_class,
+        CAST(Amount AS DECIMAL(18,2)) AS Amount
+    FROM fees
+),
+
+performance AS
+(
+    SELECT
+        b.`Employee Name` AS `Account Executive`,
+
+        -- TARGETS
+        CAST(b.`Cross sell bugdet` AS DECIMAL(18,2))
+            AS `Cross Sell Target`,
+
+        CAST(b.`New Budget` AS DECIMAL(18,2))
+            AS `New Target`,
+
+        CAST(b.`Renewal Budget` AS DECIMAL(18,2))
+            AS `Renewal Target`,
+
+        -- CROSS SELL ACHIEVE
+        COALESCE(
+            SUM(
+                CASE
+                    WHEN r.income_class = 'Cross Sell'
+                    THEN r.Amount
+                    ELSE 0
+                END
+            ), 0
+        ) AS `Cross Sell Achieve`,
+
+        -- CROSS SELL NEW
+        COALESCE(
+            SUM(
+                CASE
+                    WHEN r.income_class = 'Cross Sell'
+                    THEN 1
+                    ELSE 0
+                END
+            ), 0
+        ) AS `Cross Sell New`,
+
+        -- NEW ACHIEVE
+        COALESCE(
+            SUM(
+                CASE
+                    WHEN r.income_class = 'New'
+                    THEN r.Amount
+                    ELSE 0
+                END
+            ), 0
+        ) AS `New Achieve`,
+
+        -- NEW COUNT
+        COALESCE(
+            SUM(
+                CASE
+                    WHEN r.income_class = 'New'
+                    THEN 1
+                    ELSE 0
+                END
+            ), 0
+        ) AS `New`,
+
+        -- RENEWAL ACHIEVE
+        COALESCE(
+            SUM(
+                CASE
+                    WHEN r.income_class = 'Renewal'
+                    THEN r.Amount
+                    ELSE 0
+                END
+            ), 0
+        ) AS `Renewal Achieve`,
+
+        -- RENEWAL COUNT
+        COALESCE(
+            SUM(
+                CASE
+                    WHEN r.income_class = 'Renewal'
+                    THEN 1
+                    ELSE 0
+                END
+            ), 0
+        ) AS `Renewal New`
+
+    FROM `individual budgets` b
+
+    LEFT JOIN revenue_data r
+        ON b.`Employee Name` = r.`Account Executive`
+
+    GROUP BY
+        b.`Employee Name`,
+        b.`Cross sell bugdet`,
+        b.`New Budget`,
+        b.`Renewal Budget`
+)
+
+SELECT
+    `Account Executive`,
+
+    -- CROSS SELL
+    `Cross Sell Target`,
+    `Cross Sell Achieve`,
+    `Cross Sell New`,
+
+    -- NEW
+    `New Target`,
+    `New Achieve`,
+    `New`,
+
+    -- RENEWAL
+    `Renewal Target`,
+    `Renewal Achieve`,
+    `Renewal New`
+
+FROM performance
+ORDER BY `Account Executive`;
+
+
+
+-- ============================================================
+-- KPI 4: STAGE FUNNEL BY REVENUE
+-- ============================================================
+
+SELECT
+    stage AS `Stage`,
+    SUM(CAST(revenue_amount AS DECIMAL(18,2))) AS `Revenue`
+FROM opportunity
+GROUP BY stage
+ORDER BY
+    CASE stage
+        WHEN 'Qualify Opportunity' THEN 1
+        WHEN 'Propose Solution' THEN 2
+        WHEN 'Negotiate' THEN 3
+        ELSE 4
+    END;
+
+
+-- ============================================================
+-- KPI 5: NO. OF MEETINGS BY ACCOUNT EXECUTIVE
+-- ============================================================
+
+SELECT
+    `Account Executive`,
+    COUNT(*) AS `Meeting Count`
+FROM meeting
+GROUP BY `Account Executive`
+ORDER BY `Meeting Count` DESC;
+
+
+-- ============================================================
+-- KPI 6: TOP OPEN OPPORTUNITIES
+-- ============================================================
+
+SELECT
+    opportunity_name AS `Opportunity`,
+    opportunity_id AS `Opportunity ID`,
+    `Account Executive`,
+    CAST(revenue_amount AS DECIMAL(18,2)) AS `Revenue`,
+    stage AS `Stage`,
+    closing_date AS `Closing Date`,
+    branch AS `Branch`,
+    product_group AS `Product Group`
+FROM opportunity
+WHERE stage IS NOT NULL
+ORDER BY CAST(revenue_amount AS DECIMAL(18,2)) DESC
+LIMIT 10;
